@@ -6,6 +6,7 @@ import {
   InputType,
   Mutation,
   ObjectType,
+  Query,
   Resolver,
 } from "type-graphql";
 import argon2 from "argon2";
@@ -38,10 +39,23 @@ class UserResponse {
 
 @Resolver()
 export class UserResolver {
+  @Query(() => User, { nullable: true })
+  async me(@Ctx() { redisClient, req, em }: MyContext) {
+    if (!req.headers.cookie) return null;
+
+    const userId = req.headers.cookie.slice(4);
+    const storedUserId = await redisClient.get("qid");
+
+    if (userId !== storedUserId) return null;
+
+    const user = await em.findOne(User, { id: userId });
+    return user;
+  }
+
   @Mutation(() => UserResponse)
   async register(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { em, redisClient, setCookies }: MyContext
   ): Promise<UserResponse> {
     if (options.username.length <= 2) {
       return {
@@ -84,13 +98,28 @@ export class UserResolver {
     });
     await em.persistAndFlush(user);
 
+    const idName = "qid";
+    redisClient.set(idName, user.id);
+    setCookies.push({
+      name: idName,
+      value: user.id,
+      options: {
+        expires: new Date("2025-12-12T00:00:00"),
+        httpOnly: true,
+        maxAge: 3600,
+        path: "/",
+        sameSite: "none",
+        secure: true,
+      },
+    });
+
     return { user };
   }
 
   @Mutation(() => UserResponse)
   async login(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { em }: MyContext
+    @Ctx() { redisClient, em, req, res, setCookies, setHeaders }: MyContext
   ): Promise<UserResponse> {
     const user = await em.findOne(User, { username: options.username });
     if (!user) {
@@ -115,6 +144,30 @@ export class UserResolver {
         ],
       };
     }
+    const idName = "qid";
+    redisClient.set(idName, user.id);
+    setCookies.push({
+      name: idName,
+      value: user.id,
+      options: {
+        expires: new Date("2025-12-12T00:00:00"),
+        httpOnly: true,
+        maxAge: 3600,
+        path: "/",
+        sameSite: "none",
+        secure: true,
+      },
+    });
+    //req.session.userId = user.id;
+    // console.log("res.session", req.session);
+
+    // res.cookie("name", "tobi", {
+    //   maxAge: 1000 * 60 * 60 * 24 * 365 * 10, //10 years
+    //   httpOnly: true,
+    //   path: "/",
+    //   sameSite: "none",
+    //   secure: false, //cookie only works in https
+    // });
 
     return { user };
   }

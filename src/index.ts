@@ -10,24 +10,43 @@ import { PostResolver } from "./resolvers/post";
 import { Post } from "./entities/Post";
 import { UserResolver } from "./resolvers/user";
 import "dotenv/config";
-
+// import redis from "redis";
+const promiseRedis = require("promise-redis")();
+const httpHeadersPlugin = require("apollo-server-plugin-http-headers");
 const main = async () => {
-  console.log(".env:?:::::", process.env.DB_USER);
   const orm = await MikroORM.init(microConfig);
   orm.getMigrator().up();
 
   const post = orm.em.create(Post, { title: "my third post" });
   orm.em.persistAndFlush(post);
   const app = express();
+
+  const redisClient = await promiseRedis.createClient();
+
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
       resolvers: [HelloResolver, PostResolver, UserResolver],
       validate: false,
     }),
-    context: () => ({ em: orm.em }),
+    plugins: [httpHeadersPlugin],
+    context: ({ req, res }) => ({
+      redisClient,
+      em: orm.em,
+      req,
+      res,
+      setCookies: new Array(),
+      setHeaders: new Array(),
+    }),
   });
   await apolloServer.start();
-  apolloServer.applyMiddleware({ app });
+  apolloServer.applyMiddleware({
+    app,
+    cors: {
+      credentials: true,
+      origin: new RegExp("/*/"),
+      allowedHeaders: ["Content-Type", "Authorization"],
+    },
+  });
 
   app.listen(4000, () => {
     console.log("server started on localhost:4000");
