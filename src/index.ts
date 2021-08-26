@@ -23,6 +23,9 @@ const main = async () => {
 
   const redisClient = await promiseRedis.createClient();
 
+  // se não dar certo descomentar linhas: origin: new RegExp("/*/"),
+  // app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
       resolvers: [HelloResolver, PostResolver, UserResolver],
@@ -43,6 +46,7 @@ const main = async () => {
     app,
     cors: {
       credentials: true,
+
       origin: new RegExp("/*/"),
       allowedHeaders: ["Content-Type", "Authorization"],
     },
