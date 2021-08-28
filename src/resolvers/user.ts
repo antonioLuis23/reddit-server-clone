@@ -119,7 +119,7 @@ export class UserResolver {
   @Mutation(() => UserResponse)
   async login(
     @Arg("options") options: UsernamePasswordInput,
-    @Ctx() { redisClient, em, req, res, setCookies, setHeaders }: MyContext
+    @Ctx() { redisClient, em, setCookies }: MyContext
   ): Promise<UserResponse> {
     const user = await em.findOne(User, { username: options.username });
     if (!user) {
