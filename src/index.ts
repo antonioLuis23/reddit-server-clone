@@ -7,18 +7,16 @@ import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
-import { Post } from "./entities/Post";
 import { UserResolver } from "./resolvers/user";
 import "dotenv/config";
 // import redis from "redis";
 const promiseRedis = require("promise-redis")();
 const httpHeadersPlugin = require("apollo-server-plugin-http-headers");
+
 const main = async () => {
   const orm = await MikroORM.init(microConfig);
   orm.getMigrator().up();
 
-  const post = orm.em.create(Post, { title: "my third post" });
-  orm.em.persistAndFlush(post);
   const app = express();
 
   const redisClient = await promiseRedis.createClient();

@@ -3,7 +3,6 @@ import {
   Arg,
   Ctx,
   Field,
-  InputType,
   Mutation,
   ObjectType,
   Query,
@@ -11,14 +10,9 @@ import {
 } from "type-graphql";
 import argon2 from "argon2";
 import { MyContext } from "../types";
-@InputType()
-class UsernamePasswordInput {
-  @Field()
-  username: string;
-  @Field()
-  password: string;
-}
-
+import { COOKIE_NAME } from "../constants";
+import { UsernamePasswordInput } from "./UsernamePasswordInput";
+import { validateRegister } from "../utils/validateRegister";
 @ObjectType()
 class FieldError {
   @Field()
@@ -39,12 +33,22 @@ class UserResponse {
 
 @Resolver()
 export class UserResolver {
+  @Mutation(() => Boolean)
+  async forgotPassword(@Arg("email") email: string, @Ctx() { em }: MyContext) {
+    const user = await em.findOne(User, { email });
+    if (!user) {
+      //the email is not in the db
+      return true;
+    }
+    return true;
+  }
+
   @Query(() => User, { nullable: true })
   async me(@Ctx() { redisClient, req, em }: MyContext) {
     if (!req.headers.cookie) return null;
 
     const userId = req.headers.cookie.slice(4);
-    const storedUserId = await redisClient.get("qid");
+    const storedUserId = await redisClient.get(COOKIE_NAME);
 
     if (userId !== storedUserId) return null;
 
@@ -57,48 +61,20 @@ export class UserResolver {
     @Arg("options") options: UsernamePasswordInput,
     @Ctx() { em, redisClient, setCookies }: MyContext
   ): Promise<UserResponse> {
-    if (options.username.length <= 2) {
-      return {
-        errors: [
-          {
-            field: "username",
-            message: "length must be greater than 2",
-          },
-        ],
-      };
-    }
-
-    if (options.password.length <= 3) {
-      return {
-        errors: [
-          {
-            field: "password",
-            message: "length must be greater than 3",
-          },
-        ],
-      };
-    }
-
-    const searched = await em.findOne(User, { username: options.username });
-    if (searched) {
-      return {
-        errors: [
-          {
-            field: "username",
-            message: "This username already exists.",
-          },
-        ],
-      };
+    const errors = await validateRegister(options, em);
+    if (errors) {
+      return { errors };
     }
 
     const hashedPassword = await argon2.hash(options.password);
     const user = em.create(User, {
       username: options.username,
       password: hashedPassword,
+      email: options.email,
     });
     await em.persistAndFlush(user);
 
-    const idName = "qid";
+    const idName = COOKIE_NAME;
     redisClient.set(idName, user.id);
     setCookies.push({
       name: idName,
@@ -118,22 +94,28 @@ export class UserResolver {
 
   @Mutation(() => UserResponse)
   async login(
-    @Arg("options") options: UsernamePasswordInput,
+    @Arg("usernameOrEmail") usernameOrEmail: string,
+    @Arg("password") password: string,
     @Ctx() { redisClient, em, setCookies }: MyContext
   ): Promise<UserResponse> {
-    const user = await em.findOne(User, { username: options.username });
+    const user = await em.findOne(
+      User,
+      usernameOrEmail.includes("@")
+        ? { email: usernameOrEmail }
+        : { username: usernameOrEmail }
+    );
     if (!user) {
       return {
         errors: [
           {
-            field: "username",
+            field: "usernameOrEmail",
             message: "That username doesn't exist",
           },
         ],
       };
     }
 
-    const valid = await argon2.verify(user.password, options.password);
+    const valid = await argon2.verify(user.password, password);
     if (!valid) {
       return {
         errors: [
@@ -144,7 +126,7 @@ export class UserResolver {
         ],
       };
     }
-    const idName = "qid";
+    const idName = COOKIE_NAME;
     redisClient.set(idName, user.id);
     setCookies.push({
       name: idName,
@@ -170,5 +152,28 @@ export class UserResolver {
     // });
 
     return { user };
+  }
+
+  @Mutation(() => Boolean)
+  async logout(@Ctx() { redisClient, setCookies }: MyContext) {
+    const result = await redisClient.del(COOKIE_NAME);
+    setCookies.push({
+      name: COOKIE_NAME,
+      value: "test",
+      options: {
+        expires: new Date("1970-12-12T00:00:00"),
+        httpOnly: true,
+        maxAge: 0,
+        path: "/",
+        sameSite: "none",
+        secure: true,
+      },
+    });
+    if (result === 1) {
+      return true;
+    } else {
+      console.log("erro ao limpar o cookie");
+      return false;
+    }
   }
 }
