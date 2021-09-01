@@ -1,28 +1,37 @@
-import { MikroORM } from "@mikro-orm/core";
 import "reflect-metadata";
 import { __prod__ } from "./constants";
-import microConfig from "./mikro-orm.config";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
 import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from "./resolvers/user";
+import ioRedis from "ioredis";
 import "dotenv/config";
+import { createConnection } from "typeorm";
+import { Post } from "./entities/Post";
+import { User } from "./entities/User";
 // import redis from "redis";
-const promiseRedis = require("promise-redis")();
+//const promiseRedis = require("promise-redis")();
+
 const httpHeadersPlugin = require("apollo-server-plugin-http-headers");
 
 const main = async () => {
-  const orm = await MikroORM.init(microConfig);
-  orm.getMigrator().up();
+  // const conn =
+  await createConnection({
+    type: "postgres",
+    database: "lireddit2",
+    username: "postgres",
+    password: "postgres",
+    logging: true,
+    synchronize: true,
+    entities: [Post, User],
+  });
 
   const app = express();
 
-  const redisClient = await promiseRedis.createClient();
-
-  // se não dar certo descomentar linhas: origin: new RegExp("/*/"),
-  // app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+  //const redis = await promiseRedis.createClient();
+  const redis = new ioRedis();
 
   const apolloServer = new ApolloServer({
     schema: await buildSchema({
@@ -31,8 +40,7 @@ const main = async () => {
     }),
     plugins: [httpHeadersPlugin],
     context: ({ req, res }) => ({
-      redisClient,
-      em: orm.em,
+      redis,
       req,
       res,
       setCookies: new Array(),
