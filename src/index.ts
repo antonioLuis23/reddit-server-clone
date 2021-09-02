@@ -11,23 +11,25 @@ import "dotenv/config";
 import { createConnection } from "typeorm";
 import { Post } from "./entities/Post";
 import { User } from "./entities/User";
+import path from "path";
 // import redis from "redis";
 //const promiseRedis = require("promise-redis")();
 
 const httpHeadersPlugin = require("apollo-server-plugin-http-headers");
-
 const main = async () => {
-  // const conn =
-  await createConnection({
+  const conn = await createConnection({
     type: "postgres",
     database: "lireddit2",
     username: "postgres",
     password: "postgres",
     logging: true,
     synchronize: true,
+    migrations: [path.join(__dirname, "./migrations/*")],
     entities: [Post, User],
   });
-
+  //await conn.runMigrations();
+  //await Post.delete({});
+  console.log("aaa");
   const app = express();
 
   //const redis = await promiseRedis.createClient();
