@@ -17,6 +17,7 @@ import { MyContext } from "../types";
 import { COOKIE_NAME } from "../constants";
 import { isAuth } from "../middleware/isAuth";
 import { getConnection } from "typeorm";
+import { Updoot } from "../entities/Updoot";
 
 @InputType()
 class PostInput {
@@ -36,9 +37,37 @@ class PaginatedPosts {
 
 @Resolver(Post)
 export class PostResolver {
+  
   @FieldResolver(() => String)
   textSnippet(@Root() root: Post) {
     return root.text.slice(0, 100) + "...";
+  }
+
+  @Mutation(()=> Boolean)
+  @UseMiddleware(isAuth)
+  async vote(
+    @Arg("postId", ()=> Int) postId: number,
+    @Arg("value", ()=> Int) value: number,
+    @Ctx() {redis}: MyContext
+  ){
+    value = value !==-1?1:-1;
+    const userId = parseInt(await redis.get(COOKIE_NAME) as string) ;
+    // await Updoot.insert({
+    //   userId,
+    //   postId,
+    //   value,
+    // });
+    await getConnection().query(`
+      START TRANSACTION;
+      insert into updoot ("userId", "postId", value) 
+      values (${userId}, ${postId}, ${value});
+      update post 
+      set points = points + ${value}
+      where id = ${postId};
+      COMMIT;
+    `);
+
+    return true;
   }
 
   @Query(() => PaginatedPosts)
@@ -54,7 +83,6 @@ export class PostResolver {
     }
     const posts = await getConnection().query(
       `
-    
       select p.*, 
       json_build_object(
         'id', u.id,
